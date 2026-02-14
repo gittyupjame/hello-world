@@ -138,7 +138,7 @@ function spawnTarget() {
     x, y, r,
     color: randomColor(),
     born: performance.now(),
-    lifetime: TARGET_LIFETIME - Math.min(score * 20, 800)
+    lifetime: Math.max(TARGET_LIFETIME - score * 15, 1200)
   });
 }
 
