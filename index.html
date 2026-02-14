@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Tap Target</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100dvh;
+      overflow: hidden;
+      background: #1a1a2e;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    #hud {
+      position: fixed; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 20px;
+      color: #eee; font-size: 18px; font-weight: 600;
+      z-index: 10;
+      pointer-events: none;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100dvh;
+    }
+    #start-screen, #end-screen {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      background: rgba(26, 26, 46, 0.95);
+      color: #eee; z-index: 20;
+      gap: 20px;
+    }
+    #start-screen h1, #end-screen h1 { font-size: 32px; }
+    #end-screen .final-score { font-size: 64px; color: #e94560; }
+    .btn {
+      padding: 16px 48px;
+      font-size: 20px; font-weight: 600;
+      border: none; border-radius: 12px;
+      background: #e94560; color: #fff;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { background: #c73550; }
+    .hidden { display: none !important; }
+    .hit-text {
+      position: fixed;
+      font-size: 24px; font-weight: 700;
+      color: #0f0;
+      pointer-events: none;
+      z-index: 15;
+      animation: floatUp 0.6s ease-out forwards;
+    }
+    .miss-text {
+      position: fixed;
+      font-size: 20px; font-weight: 700;
+      color: #f44;
+      pointer-events: none;
+      z-index: 15;
+      animation: floatUp 0.5s ease-out forwards;
+    }
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-40px); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="hud">
+  <span id="score-display">Score: 0</span>
+  <span id="time-display">Time: 30</span>
+</div>
+
+<div id="start-screen">
+  <h1>Tap Target</h1>
+  <p style="color:#aaa; font-size:16px;">Tap the circles before they vanish!</p>
+  <button class="btn" id="start-btn">Play</button>
+</div>
+
+<div id="end-screen" class="hidden">
+  <h1>Time's Up!</h1>
+  <div class="final-score" id="final-score">0</div>
+  <p style="color:#aaa;">points</p>
+  <button class="btn" id="restart-btn">Play Again</button>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('score-display');
+const timeDisplay = document.getElementById('time-display');
+const startScreen = document.getElementById('start-screen');
+const endScreen = document.getElementById('end-screen');
+const finalScore = document.getElementById('final-score');
+
+let W, H, dpr;
+let score = 0;
+let timeLeft = 30;
+let targets = [];
+let running = false;
+let timerInterval = null;
+
+const TARGET_RADIUS = 30;
+const SPAWN_INTERVAL = 800;
+const TARGET_LIFETIME = 1800;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function randomColor() {
+  const colors = ['#e94560', '#0f3460', '#16c79a', '#f5a623', '#8b5cf6', '#ec4899'];
+  return colors[Math.floor(Math.random() * colors.length)];
+}
+
+function spawnTarget() {
+  const padding = TARGET_RADIUS + 10;
+  const x = padding + Math.random() * (W - padding * 2);
+  const y = 60 + Math.random() * (H - 60 - padding * 2);
+  const r = TARGET_RADIUS + Math.random() * 15;
+  targets.push({
+    x, y, r,
+    color: randomColor(),
+    born: performance.now(),
+    lifetime: TARGET_LIFETIME - Math.min(score * 20, 800)
+  });
+}
+
+function showFloatingText(x, y, text, cls) {
+  const el = document.createElement('div');
+  el.className = cls;
+  el.textContent = text;
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 600);
+}
+
+function handleTap(px, py) {
+  if (!running) return;
+  let hit = false;
+  for (let i = targets.length - 1; i >= 0; i--) {
+    const t = targets[i];
+    const dx = px - t.x;
+    const dy = py - t.y;
+    if (dx * dx + dy * dy <= t.r * t.r) {
+      targets.splice(i, 1);
+      score++;
+      scoreDisplay.textContent = 'Score: ' + score;
+      showFloatingText(px, py - 20, '+1', 'hit-text');
+      hit = true;
+      break;
+    }
+  }
+  if (!hit) {
+    showFloatingText(px, py - 20, 'miss', 'miss-text');
+  }
+}
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  handleTap(touch.clientX, touch.clientY);
+}, { passive: false });
+
+canvas.addEventListener('click', (e) => {
+  handleTap(e.clientX, e.clientY);
+});
+
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+
+  // remove expired targets
+  targets = targets.filter(t => now - t.born < t.lifetime);
+
+  for (const t of targets) {
+    const age = (now - t.born) / t.lifetime;
+    const alpha = age < 0.2 ? age / 0.2 : age > 0.7 ? (1 - age) / 0.3 : 1;
+    const scale = age < 0.1 ? age / 0.1 : 1;
+
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r * scale, 0, Math.PI * 2);
+    ctx.fillStyle = t.color;
+    ctx.fill();
+
+    // ring
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, t.r * scale + 4, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+
+  if (running) requestAnimationFrame(draw);
+}
+
+let spawnTimer = null;
+
+function startGame() {
+  score = 0;
+  timeLeft = 30;
+  targets = [];
+  running = true;
+  scoreDisplay.textContent = 'Score: 0';
+  timeDisplay.textContent = 'Time: 30';
+  startScreen.classList.add('hidden');
+  endScreen.classList.add('hidden');
+
+  requestAnimationFrame(draw);
+  spawnTarget();
+  spawnTimer = setInterval(spawnTarget, SPAWN_INTERVAL);
+
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    timeDisplay.textContent = 'Time: ' + timeLeft;
+    if (timeLeft <= 0) endGame();
+  }, 1000);
+}
+
+function endGame() {
+  running = false;
+  clearInterval(timerInterval);
+  clearInterval(spawnTimer);
+  targets = [];
+  finalScore.textContent = score;
+  endScreen.classList.remove('hidden');
+}
+
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.getElementById('restart-btn').addEventListener('click', startGame);
+</script>
+
+</body>
+</html>
