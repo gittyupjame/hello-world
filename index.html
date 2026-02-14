@@ -152,8 +152,17 @@ function showFloatingText(x, y, text, cls) {
   setTimeout(() => el.remove(), 600);
 }
 
-function handleTap(px, py) {
+function getTapPos(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (W / rect.width),
+    y: (clientY - rect.top) * (H / rect.height)
+  };
+}
+
+function handleTap(clientX, clientY) {
   if (!running) return;
+  const { x: px, y: py } = getTapPos(clientX, clientY);
   let hit = false;
   for (let i = targets.length - 1; i >= 0; i--) {
     const t = targets[i];
@@ -163,13 +172,13 @@ function handleTap(px, py) {
       targets.splice(i, 1);
       score++;
       scoreDisplay.textContent = 'Score: ' + score;
-      showFloatingText(px, py - 20, '+1', 'hit-text');
+      showFloatingText(clientX, clientY - 20, '+1', 'hit-text');
       hit = true;
       break;
     }
   }
   if (!hit) {
-    showFloatingText(px, py - 20, 'miss', 'miss-text');
+    showFloatingText(clientX, clientY - 20, 'miss', 'miss-text');
   }
 }
 
@@ -216,6 +225,7 @@ function draw(now) {
 let spawnTimer = null;
 
 function startGame() {
+  resize();
   score = 0;
   timeLeft = 30;
   targets = [];
